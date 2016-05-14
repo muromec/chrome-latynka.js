@@ -157,14 +157,17 @@ function enable({force}) {
     }
 
     const observer = new MutationObserver(function(mutations) {
-      mutations.forEach(function(mutation) {
-        walker(mutation.target, translateNode);
-        for (let i = 0; i < mutation.addedNodes.length; i++) {
-          // do things to your newly added nodes here
-          const node = mutation.addedNodes[i]
-          walker(node, translateNode);
+        if (State.key === true) {
+            return;
         }
-      })
+
+        mutations.forEach(function(mutation) {
+            walker(mutation.target, translateNode);
+            for (let i = 0; i < mutation.addedNodes.length; i++) {
+                const node = mutation.addedNodes[i]
+                walker(node, translateNode);
+            }
+        })
     })
 
     observer.observe(document.documentElement, {
@@ -189,6 +192,14 @@ function disable() {
 }
 
 (function () {
+
+    document.documentElement.addEventListener('keydown', function() {
+        State.key = true;
+    });
+
+    document.documentElement.addEventListener('keyup', function() {
+        State.key = false;
+    });
 
     chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         if (request.cmd == "enable") {
