@@ -1,3 +1,7 @@
+const State = {
+    observer: null,
+};
+
 function capitalize(str) {
     return str.charAt(0).toUpperCase() + str.slice(1);
 }
@@ -98,8 +102,21 @@ function translate(txt) {
     }, txt);
 }
 
+function revertNode(node) {
+    const orig = node.latinizeorigtitle;
+    if (orig) {
+        node.textContent = orig;
+    }
+}
+
 function translateNode(node) {
     if (!node.textContent.match(/[абвгґдеєжзиіїйклмнопрстуфхцчшщьюяАБВГДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯʼ'']/g)) {
+        return;
+    }
+
+    if (State.force) {
+        node.latinizeorigtitle = node.textContent;
+        node.textContent = translate(node.textContent);
         return;
     }
 
@@ -113,26 +130,39 @@ function translateNode(node) {
     });
 }
 
-function walker(node) {
+function walker(node, cb) {
     if (!node) {
         return;
     }
     const it = document.createNodeIterator(node, NodeFilter.SHOW_TEXT);
     for (let txt = it.nextNode(); txt !== null; txt = it.nextNode()) {
-        translateNode(txt);
+        cb(txt);
     }
     it.detach();
 
 }
 
-(function () {
+function enable({force}) {
+    if (!force && State.force) {
+        disable();
+    }
+    State.force = force;
+    if (State.observer) {
+        State.observer.disconnect();
+        State.observer = null;
+    }
+
+    if (document.body) {
+        walker(document.body, translateNode);
+    }
+
     const observer = new MutationObserver(function(mutations) {
       mutations.forEach(function(mutation) {
-        walker(mutation.target);
+        walker(mutation.target, translateNode);
         for (let i = 0; i < mutation.addedNodes.length; i++) {
           // do things to your newly added nodes here
           const node = mutation.addedNodes[i]
-          walker(node);
+          walker(node, translateNode);
         }
       })
     })
@@ -142,4 +172,39 @@ function walker(node) {
         subtree: true,
         characterData: true,
     })
+
+    State.observer = observer;
+
+    return true;
+}
+
+function disable() {
+    if (State.observer) {
+        State.observer.disconnect();
+        State.observer = null;
+    }
+    if (document.body) {
+        walker(document.body, revertNode);
+    }
+}
+
+(function () {
+
+    chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+        if (request.cmd == "enable") {
+            sendResponse({ret: enable(request.options)});
+        }
+        if (request.cmd == "disable") {
+            sendResponse({ret: disable(request.options)});
+        }
+
+    });
+
+    chrome.runtime.sendMessage({cmd: "query"}, function(response={}) {
+        const {options} = response;
+        if (!options) { return; };
+        if (options.enabled) {
+            enable(options);
+        }
+    });
 })();
